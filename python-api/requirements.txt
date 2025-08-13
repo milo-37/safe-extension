@@ -1,0 +1,6 @@
+flask
+requests
+tldextract
+bs4
+scikit-learn
+pandas
