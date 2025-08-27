@@ -1,4 +1,4 @@
-version: "3.9"
+
 services:
   laravel-web:
     build:
@@ -8,7 +8,8 @@ services:
     ports:
       - "8080:80"
     environment:
-      APP_ENV: local
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_KEY: ${APP_KEY}
       APP_URL: http://localhost:8080
       DB_CONNECTION: mysql
@@ -57,6 +58,19 @@ services:
     container_name: redis_cache
     networks: [appnet]
     restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: safeuser
+      PMA_PASSWORD: safepass
+    networks:
+      - appnet
 
 networks:
   appnet:
