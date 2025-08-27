@@ -1,0 +1,65 @@
+version: "3.9"
+services:
+  laravel-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.laravel
+    container_name: laravel_web
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      APP_URL: http://localhost:8080
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: safedb
+      DB_USERNAME: safeuser
+      DB_PASSWORD: safepass
+    depends_on: [mysql, redis]
+    networks: [appnet]
+    restart: unless-stopped
+
+  python-analyzer:
+    build:
+      context: ./python-api
+      dockerfile: Dockerfile
+    container_name: python_analyzer
+    ports:
+      - "8001:8000"
+    environment:
+      LOG_LEVEL: info
+    networks: [appnet]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: safedb
+      MYSQL_USER: safeuser
+      MYSQL_PASSWORD: safepass
+      MYSQL_ROOT_PASSWORD: rootpass
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks: [appnet]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_cache
+    networks: [appnet]
+    restart: unless-stopped
+
+networks:
+  appnet:
+
+volumes:
+  dbdata:

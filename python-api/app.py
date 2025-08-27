@@ -364,5 +364,11 @@ def train_model():
         print("❌ Lỗi khi train model:", str(e))
         return jsonify({"error": str(e)}), 500
 
+# ---- HEALTHCHECK (GET /health) ----
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
 if __name__ == '__main__':
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    # CHẠY TRONG CONTAINER: lắng nghe mọi IP + cổng 8000
+    app.run(host="0.0.0.0", port=8000, debug=False)
