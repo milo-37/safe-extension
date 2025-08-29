@@ -21,6 +21,5 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 use App\Http\Controllers\WebsiteCheckerController;
 Route::post('/check-url', [WebsiteCheckerController::class, 'check']);
 
-
-use App\Http\Controllers\CriteriaController;
-Route::get('/criteria', [CriteriaController::class, 'getCriteria']);
+use App\Http\Controllers\AITrainingController;
+Route::post('/train-ai', [AITrainingController::class, 'trainApi']);

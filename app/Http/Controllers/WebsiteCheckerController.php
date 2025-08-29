@@ -16,7 +16,7 @@ class WebsiteCheckerController extends Controller
     {
         $url = $request->input('url');
 
-        // 1. Validate URL
+        // 1) Validate
         if (!$url || !filter_var($url, FILTER_VALIDATE_URL)) {
             return response()->json([
                 'action'     => 'warn',
@@ -29,12 +29,12 @@ class WebsiteCheckerController extends Controller
             ]);
         }
 
-        // 2. Lấy host gốc, loại bỏ www., chuyển lowercase
+        // 2) Chuẩn hóa host
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?: $url);
         $host = preg_replace('/^www\./', '', $host);
 
-        // Helper chuẩn hóa host từ DB (có thể lưu dưới nhiều dạng)
-        $getHost = function(string $rawUrl) {
+        // Helper lấy host từ chuỗi bất kỳ (có thể thiếu schema)
+        $getHost = function (string $rawUrl) {
             if (!preg_match('#^https?://#i', $rawUrl)) {
                 $rawUrl = 'http://' . $rawUrl;
             }
@@ -42,10 +42,10 @@ class WebsiteCheckerController extends Controller
             return preg_replace('/^www\./', '', $h);
         };
 
-        // 3. Kiểm Whitelist
+        // 3) Whitelist
         $whitelisted = Website::where('is_blacklisted', Website::WHITELISTED)
-                              ->pluck('url')
-                              ->toArray();
+            ->pluck('url')->toArray();
+
         foreach ($whitelisted as $wl) {
             $wlHost = $getHost($wl);
             if ($host === $wlHost || Str::endsWith($host, '.' . $wlHost)) {
@@ -61,10 +61,10 @@ class WebsiteCheckerController extends Controller
             }
         }
 
-        // 4. Kiểm Blacklist
+        // 4) Blacklist
         $blacklisted = Website::where('is_blacklisted', Website::BLACKLISTED)
-                              ->pluck('url')
-                              ->toArray();
+            ->pluck('url')->toArray();
+
         foreach ($blacklisted as $bl) {
             $blHost = $getHost($bl);
             if ($host === $blHost || Str::endsWith($host, '.' . $blHost)) {
@@ -80,81 +80,87 @@ class WebsiteCheckerController extends Controller
             }
         }
 
-        // 5. Build cache key
-        $cacheKey = 'flask_analysis_' . md5($url);
+        // 5) Cache
+        $cacheKey = 'flask_analysis_v1_' . md5($url);
 
         try {
             if (Cache::has($cacheKey)) {
                 $json = Cache::get($cacheKey);
             } else {
-                // 6. WHOIS tuổi tên miền
+                // 6) WHOIS -> domain_age (ngày)
                 $domain = preg_replace('/^www\./', '', parse_url($url, PHP_URL_HOST));
                 $domainAge = 0;
+
                 try {
                     $whois = Http::withOptions(['verify' => false])
+                        ->timeout(10)
                         ->get("https://whois.inet.vn/api/whois/domainspecify/{$domain}")
                         ->json();
+
+                    // API này thường trả "creationDate" dạng dd-mm-YYYY
                     if (!empty($whois['creationDate'])) {
-                        $created   = Carbon::createFromFormat('d-m-Y', $whois['creationDate']);
+                        $created = Carbon::createFromFormat('d-m-Y', $whois['creationDate']);
                         $domainAge = now()->diffInDays($created);
                     }
-                } catch (\Exception $e) {
-                    $domainAge = 0;
+                } catch (\Throwable $e) {
+                    $domainAge = 0; // fallback
                 }
 
-                // 7. Kiểm server location
+                // 7) Server location -> is_vietnam: 0 unknown, 1 VN, 2 non-VN
                 $isVietnam = 0;
                 try {
                     $res = Http::withOptions(['verify' => false])
+                        ->timeout(10)
                         ->get("https://checkip.com.vn/locator?host={$domain}");
                     $body = $res->body();
                     $isVietnam = Str::contains($body, 'Vietnam VN') ? 1 : 2;
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     $isVietnam = 0;
                 }
 
-                // 8. Gọi Flask phân tích
-                $response = Http::timeout(20)
-                    ->post('http://127.0.0.1:5000/analyze', [
+                // 8) Gọi Flask (chỉ phân tích; KHÔNG làm WHOIS/Geo)
+                $flaskBase = rtrim(config('services.flask.base_url', env('FLASK_BASE_URL', 'http://python-analyzer:8000')), '/');
+                $timeout   = (int) env('FLASK_TIMEOUT', 20);
+
+                $response = Http::timeout($timeout)
+                    ->post("{$flaskBase}/analyze", [
                         'url'        => $url,
                         'domain_age' => $domainAge,
                         'is_vietnam' => $isVietnam
                     ]);
 
                 $json = $response->json();
+
                 if (!is_array($json) || !isset($json['score'])) {
                     throw new \Exception('Dữ liệu trả về từ Flask không hợp lệ.');
                 }
 
                 Cache::put($cacheKey, $json, now()->addMinutes(10));
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Lỗi khi gọi Flask: ' . $e->getMessage());
             return response()->json([
                 'action'     => 'warn',
                 'score'      => 50,
                 'deductions' => [[
-                        'reason' => 'Không thể kết nối tới Flask.',
-                        'score'  => 50,
-                        'type'   => 'negative'
-                    ]]
+                    'reason' => 'Không thể kết nối tới Flask.',
+                    'score'  => 50,
+                    'type'   => 'negative'
+                ]]
             ]);
         }
 
-        // 9. Trả kết quả cuối cùng
-        $score      = $json['score'];
+        // 9) Quy đổi action cuối
+        $score      = (float) $json['score'];
         $deductions = $json['deductions'] ?? [];
 
         $action = 'safe';
-        if ($score < 50) {
-            $action = 'block';
-        } elseif ($score < 80) {
-            $action = 'warn';
-        }
+        if ($score < 50)       $action = 'block';
+        elseif ($score < 80)   $action = 'warn';
 
         return response()->json([
             'action'     => $action,
-            'score'      => round(min(100, $score)),
+            'score'      => (int) round(min(100, max(0, $score))),
             'deductions' => $deductions
         ]);
     }

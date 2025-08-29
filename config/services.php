@@ -31,4 +31,10 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'flask' => [
+    'base_url' => env('FLASK_BASE_URL', 'http://python-analyzer:8000'),
+    'timeout'  => env('FLASK_TIMEOUT', 20),
+],
+
+
 ];

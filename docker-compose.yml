@@ -12,32 +12,51 @@ services:
       APP_DEBUG: "false"
       APP_KEY: ${APP_KEY}
       APP_URL: http://localhost:8080
+
+      # DB
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306
       DB_DATABASE: safedb
       DB_USERNAME: safeuser
       DB_PASSWORD: safepass
-    depends_on: [mysql, redis]
+
+      # Redis (nếu dùng cache/queue)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # >>> Quan trọng: Laravel gọi Flask qua service name trong mạng Docker
+      FLASK_BASE_URL: http://python_analyzer:8000
+      FLASK_TIMEOUT: 20
+    depends_on:
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+      python_analyzer:
+        condition: service_healthy
     networks: [appnet]
     restart: unless-stopped
 
-  python-analyzer:
+  # Đổi tên service thành python_analyzer (không dấu gạch ngang)
+  python_analyzer:
     build:
       context: ./python-api
       dockerfile: Dockerfile
     container_name: python_analyzer
     ports:
-      - "8001:8000"
+      - "8001:8000" # host:container (mở ra để bạn test Postman, Laravel dùng DNS nội bộ)
     environment:
       LOG_LEVEL: info
     networks: [appnet]
     restart: unless-stopped
+    # Healthcheck KHÔNG cần curl; dùng Python có sẵn:
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read(); sys.exit(0)"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 10
+      start_period: 10s
 
   mysql:
     image: mysql:8.0
@@ -69,8 +88,7 @@ services:
       PMA_HOST: mysql
       PMA_USER: safeuser
       PMA_PASSWORD: safepass
-    networks:
-      - appnet
+    networks: [appnet]
 
 networks:
   appnet:
