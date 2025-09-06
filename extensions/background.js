@@ -1,46 +1,33 @@
+// config đơn giản
+const API_BASE = "http://127.0.0.1:8080"; 
+
 const excludedDomains = [
-    "google.com",
-    "youtube.com",
-    "facebook.com",
-    "gmail.com",
-    "googleusercontent.com",
-    "127.0.0.1",
-    "localhost",
+  "google.com","youtube.com","facebook.com","gmail.com","googleusercontent.com",
+  "127.0.0.1","localhost",
 ];
 
-// Tách hàm lấy hostname
 function extractHostname(url) {
-    try {
-        const urlObj = new URL(url);
-        return urlObj.hostname.replace(/^www\./, ""); // bỏ www.
-    } catch (error) {
-        return "";
-    }
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
-// Tách hàm fetch API check-url
 function fetchCheckUrl(url, callback) {
-    console.log("==> Gửi fetch API kiểm tra:", url);
-
-    fetch("http://127.0.0.1:8000/api/check-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+  console.log("==> Gửi fetch API kiểm tra:", url);
+  fetch(`${API_BASE}/api/check-url`, {                 // ✅ GỌI LARAVEL (8080)
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+    .then(res => res.json())
+    .then(data => {
+      console.log("==> Kết quả API:", data);
+      chrome.storage.local.set({ checkResult: data, checkedUrl: url }, () => {
+        callback({ checkResult: data, checkedUrl: url });
+      });
     })
-        .then((res) => res.json())
-        .then((data) => {
-            console.log("==> Kết quả API:", data);
-            chrome.storage.local.set(
-                { checkResult: data, checkedUrl: url },
-                () => {
-                    callback({ checkResult: data, checkedUrl: url });
-                }
-            );
-        })
-        .catch((err) => {
-            console.error("==> Lỗi khi fetch API:", err);
-            callback(null);
-        });
+    .catch(err => {
+      console.error("==> Lỗi khi fetch API:", err);
+      callback(null);
+    });
 }
 
 // Theo dõi khi tab được cập nhật (mở trang mới)
