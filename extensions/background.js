@@ -1,8 +1,8 @@
 // config đơn giản
-const API_BASE = "http://127.0.0.1:8080"; 
+const API_BASE = "http://localhost:8080"; 
 
 const excludedDomains = [
-  "google.com","youtube.com","facebook.com","gmail.com","googleusercontent.com",
+  "youtube.com","facebook.com","googleusercontent.com",
   "127.0.0.1","localhost",
 ];
 
